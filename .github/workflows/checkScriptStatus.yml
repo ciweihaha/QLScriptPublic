@@ -134,7 +134,7 @@ jobs:
               for root, _, files in os.walk('daily'):
                   for file in files:
                       if file != 'notify.py' and not file.endswith('.md'):
-                          fpath = os.path.join(root, file).replace('\\\\', '/')
+                          fpath = os.path.join(root, file).replace('\\', '/')
                           try:
                               with open(fpath, 'r', encoding='utf-8') as f:
                                   content = f.read()
@@ -149,7 +149,7 @@ jobs:
               for root, _, files in os.walk('wxapp'):
                   for file in files:
                       if file.endswith('.js') or file.endswith('.py'):
-                          fpath = os.path.join(root, file).replace('\\\\', '/')
+                          fpath = os.path.join(root, file).replace('\\', '/')
                           try:
                               with open(fpath, 'r', encoding='utf-8') as f:
                                   content = f.read()
