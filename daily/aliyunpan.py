@@ -9,8 +9,14 @@ cron: 10 6,18 * * *
 格式: refresh_token#备注名 & refresh_token2#备注名2
 提示: 多个账号用 & 或 换行 分隔；内部参数用 # 分隔。
 进入网页端阿里云盘，按 F12 打开开发者工具，打开控制台输入JSON.parse(localStorage.getItem("token")).refresh_token 然后拼接#备注名即可，例如：
+
+刷新令牌持久化说明:
+服务端轮换 refresh_token 后，脚本会把新令牌写回脚本同目录的 .aliyunpan_tokens.json（权限 0600），
+下次运行优先使用该文件中的最新令牌，环境变量只作首次引导；可用环境变量 ALIYUNPAN_TOKEN_STORE 覆盖该文件路径。
+部署时请确保脚本目录可写（青龙环境把该文件放在脚本目录即可）。
 """
 
+import json
 import os
 import re
 import time
@@ -22,6 +28,68 @@ from typing import Dict
 # ==================== 日志配置 ====================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AliYun")
+
+# ==================== 刷新令牌持久化（sidecar 文件） ====================
+def _token_store_path() -> str:
+    """sidecar 文件路径：默认脚本同目录，可用环境变量 ALIYUNPAN_TOKEN_STORE 覆盖。"""
+    override = os.getenv("ALIYUNPAN_TOKEN_STORE", "").strip()
+    if override:
+        return override
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".aliyunpan_tokens.json")
+
+
+def _load_token_store() -> Dict[str, str]:
+    """读取 sidecar 中保存的最新 refresh_token（结构为 {备注名: refresh_token}）。
+
+    文件不存在返回空映射；文件损坏/格式异常时记录 warning 并返回空映射（回退到环境变量）。
+    """
+    path = _token_store_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        logger.warning(f"读取令牌持久化文件失败（将回退到环境变量）: {e}")
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("令牌持久化文件格式异常（将回退到环境变量）")
+        return {}
+    return {str(k): v for k, v in data.items() if isinstance(v, str) and v}
+
+
+def _save_token(name: str, refresh_token: str) -> bool:
+    """把某账号轮换后的新 refresh_token 原子写回 sidecar（同目录临时文件 + rename，权限 0600）。
+
+    只更新该账号条目；与已存值相同时直接视为成功。任何失败只记录 error 日志并返回 False，
+    绝不向上抛错中断签到主流程。注意：日志中绝不输出令牌原文或其片段。
+    """
+    path = _token_store_path()
+    try:
+        store = _load_token_store()
+        if store.get(name) == refresh_token:
+            return True
+        store[name] = refresh_token
+        tmp_path = f"{path}.tmp{os.getpid()}"
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(store, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        return True
+    except Exception as e:
+        logger.error(f"[{name}] 刷新令牌持久化失败（本次签到不受影响，但下次运行可能仍使用旧令牌）: {e}")
+        return False
+
 
 # ==================== 核心逻辑 ====================
 class ALiYun:
@@ -36,14 +104,20 @@ class ALiYun:
         }
 
     def _refresh_access_token(self) -> bool:
-        """刷新 access_token"""
+        """刷新 access_token；服务端若轮换了 refresh_token，同步写回 sidecar 持久化供下次运行使用。"""
         url = 'https://auth.aliyundrive.com/v2/account/token'
         payload = {'grant_type': 'refresh_token', 'refresh_token': self.refresh_token}
         try:
             res = self.session.post(url, json=payload, timeout=10).json()
             if 'access_token' in res:
                 self.access_token = res['access_token']
-                self.refresh_token = res['refresh_token']  # 更新持久化的token
+                new_refresh_token = res.get('refresh_token')
+                if new_refresh_token:
+                    self.refresh_token = new_refresh_token
+                    # 写回 sidecar 持久化；失败只大声告警，不影响本次签到
+                    _save_token(self.name, new_refresh_token)
+                else:
+                    logger.warning(f"[{self.name}] 刷新响应未返回新的 refresh_token，保留当前令牌")
                 return True
             logger.error(f"[{self.name}] 刷新 Token 失败: {res.get('message', '未知错误')}")
             return False
@@ -131,15 +205,19 @@ def main():
 
     # 按 & 或 换行 分隔账号
     account_list = re.split(r'[&\n]+', raw_conf.strip())
+    # sidecar 中保存的是服务端轮换后的最新令牌，优先于环境变量（环境变量只作首次引导）
+    token_store = _load_token_store()
     final_reports = []
 
     for idx, acc_str in enumerate(account_list):
         if not acc_str.strip(): continue
-        
+
         # 按 # 分隔 token 和 备注
         parts = acc_str.split('#')
         token = parts[0].strip()
         name = parts[1].strip() if len(parts) > 1 else f"账号{idx+1}"
+
+        token = token_store.get(name) or token
 
         if not token:
             logger.warning(f"账号 {name} 缺少 refresh_token，跳过")
