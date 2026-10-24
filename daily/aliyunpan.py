@@ -103,12 +103,24 @@ class ALiYun:
 
 # ==================== 通知逻辑 ====================
 def send_notify(title, content):
-    """简易通知，如果有 notify.py 则尝试调用"""
+    """发送通知：调用 notify.py 的 send() 真正推送。
+
+    - notify 模块不存在时降级为仅打印预览，并明确记录日志；
+    - 推送过程抛错时只记录错误并返回 False，绝不影响签到主流程结果；
+    - 返回 True 表示已调用推送入口，False 表示降级或失败。
+    """
     try:
         from notify import send
-        print(title, content)
     except ImportError:
+        logger.warning("未找到 notify 模块，降级为仅打印通知内容，不实际推送")
         logger.info("\n--- 通知预览 ---\n" + title + "\n" + content)
+        return False
+    try:
+        send(title, content)
+        return True
+    except Exception as e:
+        logger.error(f"通知发送失败（不影响签到结果）: {e}")
+        return False
 
 # ==================== 主入口 ====================
 def main():
@@ -146,7 +158,11 @@ def main():
             time.sleep(random.randint(3, 8))
 
     if final_reports:
-        print("阿里云盘签到报告", "\n" + "="*20 + "\n" + "\n\n".join(final_reports))
+        title = "阿里云盘签到报告"
+        content = "\n" + "="*20 + "\n" + "\n\n".join(final_reports)
+        print(title, content)
+        # 多账号聚合为一条通知统一发送，不逐账号推送
+        send_notify(title, content)
 
 if __name__ == "__main__":
     main()
