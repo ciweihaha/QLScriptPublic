@@ -14,6 +14,8 @@ cron: 10 6,18 * * *
 服务端轮换 refresh_token 后，脚本会把新令牌写回脚本同目录的 .aliyunpan_tokens.json（权限 0600），
 下次运行优先使用该文件中的最新令牌，环境变量只作首次引导；可用环境变量 ALIYUNPAN_TOKEN_STORE 覆盖该文件路径。
 部署时请确保脚本目录可写（青龙环境把该文件放在脚本目录即可）。
+损坏处理：sidecar 损坏（JSON 解析失败或顶层非 dict）时隔离为同目录 .aliyunpan_tokens.json.corrupt-<时间戳> 并拒绝全量覆盖，需人工处理；
+写回时持同目录 .aliyunpan_tokens.lock 独占锁（10 秒超时），锁内重新加载合并；入口处清理超过 1 天的同名前缀临时文件，临时文件权限保持 0600。
 """
 
 import json
@@ -23,13 +25,24 @@ import time
 import logging
 import requests
 import random
-from typing import Dict
+from typing import Dict, Tuple
+
+try:
+    import fcntl
+except ImportError:  # Windows 等不支持 fcntl 的环境，写回时降级为无锁行为
+    fcntl = None
 
 # ==================== 日志配置 ====================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AliYun")
 
 # ==================== 刷新令牌持久化（sidecar 文件） ====================
+# 本进程内一旦检测到 sidecar 损坏即置位：即使隔离改名后文件已不存在，
+# 同一进程后续的写回也不得以空映射覆盖，必须等人工处理。
+_TOKEN_STORE_CORRUPT = False
+_TOKEN_STORE_CORRUPT_PATH = ""
+
+
 def _token_store_path() -> str:
     """sidecar 文件路径：默认脚本同目录，可用环境变量 ALIYUNPAN_TOKEN_STORE 覆盖。"""
     override = os.getenv("ALIYUNPAN_TOKEN_STORE", "").strip()
@@ -38,35 +51,136 @@ def _token_store_path() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), ".aliyunpan_tokens.json")
 
 
-def _load_token_store() -> Dict[str, str]:
-    """读取 sidecar 中保存的最新 refresh_token（结构为 {备注名: refresh_token}）。
+def _quarantine_corrupt_store(path: str) -> str:
+    """把损坏的 sidecar 改名隔离，返回隔离路径；隔离失败返回空串。"""
+    global _TOKEN_STORE_CORRUPT_PATH
+    directory = os.path.dirname(path) or "."
+    base = os.path.basename(path)
+    stamp = time.strftime("%Y%m%d%H%M%S")
+    corrupt_path = os.path.join(directory, f"{base}.corrupt-{stamp}")
+    if os.path.exists(corrupt_path):
+        corrupt_path = os.path.join(directory, f"{base}.corrupt-{stamp}-{os.getpid()}")
+    try:
+        os.replace(path, corrupt_path)
+        _TOKEN_STORE_CORRUPT_PATH = corrupt_path
+        return corrupt_path
+    except OSError as e:
+        logger.error(f"隔离损坏的令牌持久化文件失败（请人工处理）: {e}")
+        return ""
 
-    文件不存在返回空映射；文件损坏/格式异常时记录 warning 并返回空映射（回退到环境变量）。
+
+def _load_token_store_with_dirty() -> Tuple[Dict[str, str], bool]:
+    """读取 sidecar 中保存的最新 refresh_token（结构为 {备注名: refresh_token}），返回（映射，是否损坏）。
+
+    文件不存在返回空映射且不标记损坏；JSON 解析失败或顶层非 dict 时把原文件改名隔离为
+    同目录 .aliyunpan_tokens.json.corrupt-<时间戳>（保留证据），返回空映射（回退到环境变量）
+    并标记为脏；其他读取失败同样标记为脏，避免用未知内容上的空映射覆盖。
     """
+    global _TOKEN_STORE_CORRUPT
     path = _token_store_path()
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
-        return {}
+        return {}, False
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        _TOKEN_STORE_CORRUPT = True
+        corrupt_path = _quarantine_corrupt_store(path)
+        logger.error(f"令牌持久化文件已损坏（JSON 解析失败），已隔离为 {corrupt_path or path}，将回退到环境变量并拒绝后续全量覆盖，请人工处理: {e}")
+        return {}, True
     except Exception as e:
-        logger.warning(f"读取令牌持久化文件失败（将回退到环境变量）: {e}")
-        return {}
+        _TOKEN_STORE_CORRUPT = True
+        logger.error(f"读取令牌持久化文件失败（将回退到环境变量并拒绝后续全量覆盖，请人工处理）: {e}")
+        return {}, True
     if not isinstance(data, dict):
-        logger.warning("令牌持久化文件格式异常（将回退到环境变量）")
-        return {}
-    return {str(k): v for k, v in data.items() if isinstance(v, str) and v}
+        _TOKEN_STORE_CORRUPT = True
+        corrupt_path = _quarantine_corrupt_store(path)
+        logger.error(f"令牌持久化文件已损坏（顶层非 dict），已隔离为 {corrupt_path or path}，将回退到环境变量并拒绝后续全量覆盖，请人工处理")
+        return {}, True
+    return {str(k): v for k, v in data.items() if isinstance(v, str) and v}, False
+
+
+def _load_token_store() -> Dict[str, str]:
+    """读取 sidecar 中保存的最新 refresh_token（结构为 {备注名: refresh_token}）。
+
+    兼容旧签名：只返回映射。损坏处理见 _load_token_store_with_dirty；需要脏标记的调用方请用后者。
+    """
+    store, _dirty = _load_token_store_with_dirty()
+    return store
+
+
+def _cleanup_stale_token_tmp_files(path: str, max_age_seconds: int = 86400) -> None:
+    """清理超过 1 天的同名前缀临时文件。
+
+    只删 <原名>.tmp*（当前写回产生的临时文件即 f"{path}.tmp{pid}"；自定义路径无前导点时
+    也兼容 .<原名>.tmp*），避免误删其他文件；清理失败静默跳过，不影响签到。
+    """
+    directory = os.path.dirname(path) or "."
+    base = os.path.basename(path)
+    prefixes = {f"{base}.tmp"}
+    if not base.startswith("."):
+        prefixes.add(f".{base}.tmp")
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return
+    now = time.time()
+    for entry in entries:
+        if not any(entry.startswith(prefix) for prefix in prefixes):
+            continue
+        full = os.path.join(directory, entry)
+        try:
+            if not os.path.isfile(full):
+                continue
+            if now - os.path.getmtime(full) > max_age_seconds:
+                os.unlink(full)
+        except OSError:
+            continue
 
 
 def _save_token(name: str, refresh_token: str) -> bool:
-    """把某账号轮换后的新 refresh_token 原子写回 sidecar（同目录临时文件 + rename，权限 0600）。
+    """把某账号轮换后的新 refresh_token 写回 sidecar（同目录临时文件 + rename，权限 0600）。
 
-    只更新该账号条目；与已存值相同时直接视为成功。任何失败只记录 error 日志并返回 False，
+    只更新该账号条目；写回前对同目录 .aliyunpan_tokens.lock 做 fcntl.flock 独占锁，锁内重新
+    加载、合并、写回、解锁（os.replace 只保证单文件替换原子，不保证读-改-写序列原子）。
+    10 秒内未获锁则放弃写回并记 error；flock 不可用时捕获异常并降级为当前无锁行为（记 warning）。
+    sidecar 已标记损坏时拒绝全量覆盖并记 error，要求人工处理：此时加载结果即使为空 dict，
+    也不得以“与已存值相同直接返回”或空映射覆盖为由写回。任何失败只记录日志并返回 False，
     绝不向上抛错中断签到主流程。注意：日志中绝不输出令牌原文或其片段。
     """
     path = _token_store_path()
+    _cleanup_stale_token_tmp_files(path)
+    lock_file = None
+    locked = False
     try:
-        store = _load_token_store()
+        if fcntl is not None:
+            lock_path = os.path.join(os.path.dirname(path) or ".", ".aliyunpan_tokens.lock")
+            try:
+                lock_file = open(lock_path, "a+")
+                deadline = time.monotonic() + 10
+                while True:
+                    try:
+                        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        locked = True
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            logger.error(f"[{name}] 刷新令牌持久化失败：10 秒内未获得 sidecar 写锁，放弃写回（本次签到不受影响）")
+                            return False
+                        time.sleep(0.1)
+            except OSError as e:
+                # 锁本身不可用（如文件系统不支持 flock）时降级为当前无锁行为，避免锁拖垮签到。
+                logger.warning(f"[{name}] sidecar 写锁不可用，降级为无锁写回: {e}")
+                if lock_file is not None:
+                    try:
+                        lock_file.close()
+                    except OSError:
+                        pass
+                    lock_file = None
+        store, dirty = _load_token_store_with_dirty()
+        if dirty or _TOKEN_STORE_CORRUPT:
+            logger.error(f"[{name}] 刷新令牌持久化被拒绝：sidecar 已损坏（隔离文件见上文日志），需人工处理，拒绝全量覆盖")
+            return False
         if store.get(name) == refresh_token:
             return True
         store[name] = refresh_token
@@ -89,6 +203,17 @@ def _save_token(name: str, refresh_token: str) -> bool:
     except Exception as e:
         logger.error(f"[{name}] 刷新令牌持久化失败（本次签到不受影响，但下次运行可能仍使用旧令牌）: {e}")
         return False
+    finally:
+        if locked and lock_file is not None:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+            except Exception:
+                pass
+        if lock_file is not None:
+            try:
+                lock_file.close()
+            except OSError:
+                pass
 
 
 # ==================== 核心逻辑 ====================
