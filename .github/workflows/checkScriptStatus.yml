@@ -14,17 +14,18 @@ on:
 jobs:
   update-readme:
     runs-on: ubuntu-latest
+    # 最小权限说明：contents:write 仅用于末尾 git push 回写 README.md（脚本内只 git add README.md）；其余步骤只读。
     permissions:
       contents: write
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2
 
       - name: 配置 Python 环境
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
 
