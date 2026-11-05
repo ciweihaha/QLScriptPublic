@@ -266,7 +266,10 @@ def go_cqhttp(title: str, content: str) -> None:
     print("go-cqhttp 服务启动")
 
     url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message=标题:{title}\n内容:{content}'
-    response = requests.get(url).json()
+    # 深查第 1 轮：同文件 bark/dingding/wecom 等通道均用 timeout=15，
+    # 本通道原先无 timeout，上游挂起时会卡住整个 notify 链，后续通道不再执行。
+    # 只加 timeout，不改 URL 与鉴权形态（go-cqhttp 的 access_token 查询参数语义未验证，不擅自改 header）。
+    response = requests.get(url, timeout=15).json()
 
     if response["status"] == "ok":
         print("go-cqhttp 推送成功！")
