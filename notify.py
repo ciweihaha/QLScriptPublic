@@ -481,7 +481,10 @@ def wecom_app(title: str, content: str) -> None:
     if not push_config.get("QYWX_AM"):
         return
     QYWX_AM_AY = re.split(",", push_config.get("QYWX_AM"))
-    if 4 < len(QYWX_AM_AY) > 5:
+    # 深查第 2 轮：原条件 `4 < len(...) > 5` 是链式比较，等价于 len > 5，
+    # 1–3 段的短配置会漏过校验，随后在 QYWX_AM_AY[1]/[2]/[3] 处抛 IndexError；
+    # 正确语义是只接受 4 段（无 media_id）或 5 段（含 media_id）。
+    if len(QYWX_AM_AY) < 4 or len(QYWX_AM_AY) > 5:
         print("QYWX_AM 设置错误!!")
         return
     print("企业微信 APP 服务启动")
