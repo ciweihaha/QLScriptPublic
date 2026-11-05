@@ -32,6 +32,7 @@ def print(text, *args, **kw):
 
 # 通知服务
 # fmt: off
+# 注释中的“例”均为占位示意，非真实凭证；真实凭证一律从环境变量读取，push_config 默认值均为空。
 push_config = {
     'HITOKOTO': True,                  # 启用一言（随机句子）
 
@@ -94,8 +95,8 @@ push_config = {
 
     'QYWX_KEY': '',                     # 企业微信机器人
 
-    'TG_BOT_TOKEN': '',                 # tg 机器人的 TG_BOT_TOKEN，例：1407203283:AAG9rt-6RDaaX0HBLZQq0laNOh898iFYaRQ
-    'TG_USER_ID': '',                   # tg 机器人的 TG_USER_ID，例：1434078534
+    'TG_BOT_TOKEN': '',                 # tg 机器人的 TG_BOT_TOKEN，例：<YOUR_BOT_TOKEN>（占位符，非真实值）
+    'TG_USER_ID': '',                   # tg 机器人的 TG_USER_ID，例：<YOUR_USER_ID>（占位符，非真实值）
     'TG_API_HOST': '',                  # tg 代理 api
     'TG_PROXY_AUTH': '',                # tg 代理认证参数
     'TG_PROXY_HOST': '',                # tg 机器人的 TG_PROXY_HOST
