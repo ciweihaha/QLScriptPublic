@@ -419,15 +419,10 @@ def pushplus_bot(title: str, content: str) -> None:
         print(response["msg"])
 
     else:
-        url_old = "http://pushplus.hxtrip.com/send"
-        headers["Accept"] = "application/json"
-        response = requests.post(url=url_old, data=body, headers=headers).json()
-
-        if response["code"] == 200:
-            print("PUSHPLUS(hxtrip) 推送成功！")
-
-        else:
-            print("PUSHPLUS 推送失败！")
+        # 2026-11-05 第 2 轮：删掉明文 HTTP 非官方域名回退。原逻辑在主通道异常时
+        # 把同一 body（含 PUSH_PLUS_TOKEN）原样发到 http://pushplus.hxtrip.com/send，
+        # 明文且非官方，令牌外泄风险大于推送成功收益；现只报失败，不重发、不换域。
+        print("PUSHPLUS 推送失败！")
 
 
 def weplus_bot(title: str, content: str) -> None:
