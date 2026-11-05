@@ -266,7 +266,8 @@ def go_cqhttp(title: str, content: str) -> None:
     print("go-cqhttp 服务启动")
 
     url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message=标题:{title}\n内容:{content}'
-    response = requests.get(url).json()
+    # 深查第 1 轮：与 notify.py 双生文件同改，只加 timeout=15，不改 URL 与鉴权形态。
+    response = requests.get(url, timeout=15).json()
 
     if response["status"] == "ok":
         print("go-cqhttp 推送成功！")
