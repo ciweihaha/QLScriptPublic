@@ -1003,8 +1003,17 @@ def one() -> str:
     :return:
     """
     url = "https://v1.hitokoto.cn/"
-    res = requests.get(url).json()
-    return res["hitokoto"] + "    ----" + res["from"]
+    # 深查第 4 轮：一言只是装饰性附言，send() 却在主线程同步调用它，
+    # 且原先无 timeout、无任何异常防护——上游挂起/断网/回非 JSON/缺字段时
+    # 异常直接抛出，send() 在建通道线程之前就崩掉，全部通道一条都发不出去。
+    # 改为 5 秒 fail-fast 超时（装饰接口不等同于推送通道，不沿用 15 秒），
+    # 失败返回空串、只记日志，推送继续走；成功语义不变。
+    try:
+        res = requests.get(url, timeout=5).json()
+        return res["hitokoto"] + "    ----" + res["from"]
+    except Exception as e:
+        print(f"一言获取失败，跳过一言继续推送！{e}")
+        return ""
 
 
 def add_notify_function():
