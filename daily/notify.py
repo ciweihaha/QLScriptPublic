@@ -360,7 +360,13 @@ def pushdeer(title: str, content: str) -> None:
 
     response = requests.post(url, data=data).json()
 
-    if len(response.get("content").get("result")) > 0:
+    # 深查第 3 轮：PushDeer 的 content 是多形态字段——成功时为 {"result": [...]}，
+    # 失败时为字符串错误信息（或缺失）；原 `response.get("content").get("result")`
+    # 在失败路径上先抛 AttributeError/TypeError，"推送失败" 永远打不出来。
+    # 只认 dict 形态 content 下的非空 list result 为成功，其余一律走失败分支。
+    content = response.get("content")
+    result = content.get("result") if isinstance(content, dict) else None
+    if isinstance(result, list) and len(result) > 0:
         print("PushDeer 推送成功！")
     else:
         print("PushDeer 推送失败！错误信息：", response)
