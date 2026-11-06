@@ -1085,6 +1085,20 @@ def add_notify_function():
     return notify_function
 
 
+# 深查第 5 轮：send() 的总耗时上限（单点收敛，详见 REPORT.md）。
+# 线程并行跑各通道，但原先的 `[t.join() for t in ts]` 无 timeout：18 处
+# requests 调用（含 feishu/gotify/iGot/serverJ/pushdeer 等）与 SMTP 均无
+# timeout，任一通道上游挂起，send() 就永远不返回——CONSOLE 等已完成
+# 的通道也等不到返回，调用方脚本随之卡死。逐通道补 timeout 是 18 处，
+# 本轮只在唯一的汇合点 send() 收敛：总预算 60 秒（墙钟，按最慢的单
+# 个通道计，不是各通道求和；60 = 4 × 单请求 15 秒，容得下 WeCom 取
+# token 再发消息、chronocat 循环发多条等单线程多请求形态）。
+# 注意 join(timeout) 只放行 send() 返回，不杀死线程：超时线程若进程
+# 未退出仍可能随后完成推送；daemon=True 是为进程退出时不再被挂起
+# 线程拖住（默认非 daemon 线程会让解释器退出时一直等）。
+SEND_JOIN_TIMEOUT = 60  # 秒，send() 等全部通道的最长墙钟时间
+
+
 def send(title: str, content: str, ignore_default_config: bool = False, **kwargs):
     if kwargs:
         global push_config
@@ -1109,11 +1123,22 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
 
     notify_function = add_notify_function()
     ts = [
-        threading.Thread(target=mode, args=(title, content), name=mode.__name__)
+        threading.Thread(
+            target=mode, args=(title, content), name=mode.__name__, daemon=True
+        )
         for mode in notify_function
     ]
     [t.start() for t in ts]
-    [t.join() for t in ts]
+    # 总预算按统一 deadline 扣：逐个 join 剩余时间，避免每线程 60 秒叠加成 N×60。
+    deadline = time.monotonic() + SEND_JOIN_TIMEOUT
+    for t in ts:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        t.join(timeout=remaining)
+    unfinished = [t.name for t in ts if t.is_alive()]
+    if unfinished:
+        print(f"推送超时，仍未完成的通道：{', '.join(unfinished)}，已跳过等待继续执行！")
 
 
 def main():
