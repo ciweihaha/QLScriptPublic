@@ -1082,6 +1082,12 @@ def add_notify_function():
     return notify_function
 
 
+# 深查第 5 轮：与 notify.py 双生文件同改——send() 总耗时上限 60 秒
+#（单点收敛于唯一的 join 汇合点；daemon + 统一 deadline + 超时点名，
+# 详见 notify.py 的注释与 REPORT.md）。
+SEND_JOIN_TIMEOUT = 60  # 秒，send() 等全部通道的最长墙钟时间
+
+
 def send(title: str, content: str, ignore_default_config: bool = False, **kwargs):
     if kwargs:
         global push_config
@@ -1106,11 +1112,22 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
 
     notify_function = add_notify_function()
     ts = [
-        threading.Thread(target=mode, args=(title, content), name=mode.__name__)
+        threading.Thread(
+            target=mode, args=(title, content), name=mode.__name__, daemon=True
+        )
         for mode in notify_function
     ]
     [t.start() for t in ts]
-    [t.join() for t in ts]
+    # 总预算按统一 deadline 扣：逐个 join 剩余时间，避免每线程 60 秒叠加成 N×60。
+    deadline = time.monotonic() + SEND_JOIN_TIMEOUT
+    for t in ts:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        t.join(timeout=remaining)
+    unfinished = [t.name for t in ts if t.is_alive()]
+    if unfinished:
+        print(f"推送超时，仍未完成的通道：{', '.join(unfinished)}，已跳过等待继续执行！")
 
 
 def main():
