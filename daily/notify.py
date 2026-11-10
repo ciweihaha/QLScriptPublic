@@ -712,10 +712,15 @@ def smtp(title: str, content: str) -> None:
     message["Subject"] = Header(title, "utf-8")
 
     try:
+        # 深查第 6 轮：原先未传 timeout，smtplib 的 timeout 缺省走 socket 默认
+        # （None = 无限阻塞），上游挂起时建连、login、发信三步任一步都可永远卡住，
+        # 通道线程永不返回。这是第 5 轮登记的第 19 个挂起点（18 处 requests
+        # 调用 + SMTP）。只加 timeout=15（仓内通道惯用值），不改主机名、端口
+        # 与 SSL 选择语义（"host:port" 写法由 smtplib.connect 自行拆分）。
         smtp_server = (
-            smtplib.SMTP_SSL(push_config.get("SMTP_SERVER"))
+            smtplib.SMTP_SSL(push_config.get("SMTP_SERVER"), timeout=15)
             if push_config.get("SMTP_SSL") == "true"
-            else smtplib.SMTP(push_config.get("SMTP_SERVER"))
+            else smtplib.SMTP(push_config.get("SMTP_SERVER"), timeout=15)
         )
         smtp_server.login(
             push_config.get("SMTP_EMAIL"), push_config.get("SMTP_PASSWORD")
