@@ -271,7 +271,14 @@ def go_cqhttp(title: str, content: str) -> None:
         return
     print("go-cqhttp 服务启动")
 
-    url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message=标题:{title}\n内容:{content}'
+    # 深查第 10 轮：message 值做 URL 编码（双生文件同改）。原先标题/内容
+    # 直接拼进 query：含 & 时消息在第一个 & 处截断（实测标题"签到&B"只剩
+    # "标题:签到"），含 =/# /空格时还会串改参数或丢进 fragment。
+    # 只编码 message 这一个值（quote_plus：空格→+、换行→%0A、&/=# 等按
+    # UTF-8 百分号编码，服务端标准解析还原）；access_token 与 GOBOT_QQ
+    # 的拼接形态不动（第 1 轮已声明不擅自改鉴权形态）。
+    message = urllib.parse.quote_plus(f"标题:{title}\n内容:{content}")
+    url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message={message}'
     # 深查第 1 轮：同文件 bark/dingding/wecom 等通道均用 timeout=15，
     # 本通道原先无 timeout，上游挂起时会卡住整个 notify 链，后续通道不再执行。
     # 只加 timeout，不改 URL 与鉴权形态（go-cqhttp 的 access_token 查询参数语义未验证，不擅自改 header）。

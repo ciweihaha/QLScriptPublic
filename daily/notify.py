@@ -268,7 +268,11 @@ def go_cqhttp(title: str, content: str) -> None:
         return
     print("go-cqhttp 服务启动")
 
-    url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message=标题:{title}\n内容:{content}'
+    # 深查第 10 轮：与 notify.py 双生文件同改——message 值做 URL 编码，
+    # 标题/内容含 & 时原先在第一个 & 处截断；只编码 message 值，
+    # access_token 与 GOBOT_QQ 拼接形态不动（详见 notify.py 的注释）。
+    message = urllib.parse.quote_plus(f"标题:{title}\n内容:{content}")
+    url = f'{push_config.get("GOBOT_URL")}?access_token={push_config.get("GOBOT_TOKEN")}&{push_config.get("GOBOT_QQ")}&message={message}'
     # 深查第 1 轮：与 notify.py 双生文件同改，只加 timeout=15，不改 URL 与鉴权形态。
     response = requests.get(url, timeout=15).json()
 
