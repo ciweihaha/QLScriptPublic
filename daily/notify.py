@@ -499,7 +499,10 @@ def wecom_app(title: str, content: str) -> None:
     """
     if not push_config.get("QYWX_AM"):
         return
-    QYWX_AM_AY = re.split(",", push_config.get("QYWX_AM"))
+    # 深查第 13 轮：与 notify.py 双生文件同改——分段后 strip，环境变量
+    # 手填的空格不再让 corpsecret 带前导空格导致企微拒 token
+    # （详见 notify.py 的注释）。
+    QYWX_AM_AY = [seg.strip() for seg in re.split(",", push_config.get("QYWX_AM"))]
     # 深查第 2 轮：原条件 `4 < len(...) > 5` 是链式比较，等价于 len > 5，
     # 1–3 段的短配置会漏过校验，随后在 QYWX_AM_AY[1]/[2]/[3] 处抛 IndexError；
     # 正确语义是只接受 4 段（无 media_id）或 5 段（含 media_id）。

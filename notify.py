@@ -513,7 +513,11 @@ def wecom_app(title: str, content: str) -> None:
     """
     if not push_config.get("QYWX_AM"):
         return
-    QYWX_AM_AY = re.split(",", push_config.get("QYWX_AM"))
+    # 深查第 13 轮：分段后 strip（双生文件同改）。环境变量手填常带空格
+    # （"corpid, secret, user, agentid"），原先直接 split，corpsecret
+    # 带前导空格 " secret"，企微取 token 直接拒掉；corpid 首段不受影响、
+    # touser/agentid 同理。ID 与密钥本身不含首尾空格，strip 安全。
+    QYWX_AM_AY = [seg.strip() for seg in re.split(",", push_config.get("QYWX_AM"))]
     # 深查第 2 轮：原条件 `4 < len(...) > 5` 是链式比较，等价于 len > 5，
     # 1–3 段的短配置会漏过校验，随后在 QYWX_AM_AY[1]/[2]/[3] 处抛 IndexError；
     # 正确语义是只接受 4 段（无 media_id）或 5 段（含 media_id）。
