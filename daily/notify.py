@@ -639,7 +639,10 @@ def telegram_bot(title: str, content: str) -> None:
     }
     proxies = None
     if push_config.get("TG_PROXY_HOST") and push_config.get("TG_PROXY_PORT"):
-        if push_config.get("TG_PROXY_AUTH") is not None and "@" not in push_config.get(
+        # 深查第 12 轮：与 notify.py 双生文件同改——TG_PROXY_AUTH 未填是
+        # 空串 '' 而非 None，原 `is not None` 恒真，拼出 http://@host:port
+        # 非法代理；改判真值，只有非空认证才拼接（详见 notify.py 的注释）。
+        if push_config.get("TG_PROXY_AUTH") and "@" not in push_config.get(
             "TG_PROXY_HOST"
         ):
             push_config["TG_PROXY_HOST"] = (

@@ -653,7 +653,11 @@ def telegram_bot(title: str, content: str) -> None:
     }
     proxies = None
     if push_config.get("TG_PROXY_HOST") and push_config.get("TG_PROXY_PORT"):
-        if push_config.get("TG_PROXY_AUTH") is not None and "@" not in push_config.get(
+        # 深查第 12 轮：TG_PROXY_AUTH 未填时 push_config 里是空串 '' 而非 None，
+        # 原 `is not None` 恒为真，会把 "" + "@" 拼进 host，代理变成
+        # http://@host:port（空 userinfo，非法代理）且写回污染全局配置，
+        # 之后每次调用都走坏代理。改判真值：只有非空认证才拼接。
+        if push_config.get("TG_PROXY_AUTH") and "@" not in push_config.get(
             "TG_PROXY_HOST"
         ):
             push_config["TG_PROXY_HOST"] = (
