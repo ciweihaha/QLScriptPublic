@@ -249,7 +249,13 @@ def feishu_bot(title: str, content: str) -> None:
         data["timestamp"] = timestamp
         data["sign"] = sign
 
-    response = requests.post(url, data=json.dumps(data)).json()
+    # 深查第 7 轮：补齐第 5 轮登记、第 6 轮只修了 SMTP 的 18 处无 timeout
+    # requests 调用（本文件 feishu/gotify/iGot/serverJ/pushdeer/chat/
+    # pushplus/weplus/qmsg/WeCom×3/telegram/aibotk/pushme/chronocat/
+    # ntfy/wxpusher；双生文件同改）。无 timeout 时上游挂起会卡住通道
+    # 线程直至 send() 的 60 秒总预算耗尽；统一补 timeout=15（仓内惯用值），
+    # 只加超时，不改 URL、参数与成功判定。
+    response = requests.post(url, data=json.dumps(data), timeout=15).json()
 
     if response.get("StatusCode") == 0 or response.get("code") == 0:
         print("飞书 推送成功！")
@@ -291,7 +297,7 @@ def gotify(title: str, content: str) -> None:
         "message": content,
         "priority": push_config.get("GOTIFY_PRIORITY"),
     }
-    response = requests.post(url, data=data).json()
+    response = requests.post(url, data=data, timeout=15).json()
 
     if response.get("id"):
         print("gotify 推送成功！")
@@ -310,7 +316,7 @@ def iGot(title: str, content: str) -> None:
     url = f'https://push.hellyw.com/{push_config.get("IGOT_PUSH_KEY")}'
     data = {"title": title, "content": content}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    response = requests.post(url, data=data, headers=headers).json()
+    response = requests.post(url, data=data, headers=headers, timeout=15).json()
 
     if response["ret"] == 0:
         print("iGot 推送成功！")
@@ -335,7 +341,7 @@ def serverJ(title: str, content: str) -> None:
     else:
         url = f'https://sctapi.ftqq.com/{push_config.get("PUSH_KEY")}.send'
 
-    response = requests.post(url, data=data).json()
+    response = requests.post(url, data=data, timeout=15).json()
 
     if response.get("errno") == 0 or response.get("code") == 0:
         print("serverJ 推送成功！")
@@ -360,7 +366,7 @@ def pushdeer(title: str, content: str) -> None:
     if push_config.get("DEER_URL"):
         url = push_config.get("DEER_URL")
 
-    response = requests.post(url, data=data).json()
+    response = requests.post(url, data=data, timeout=15).json()
 
     # 深查第 3 轮：PushDeer 的 content 是多形态字段——成功时为 {"result": [...]}，
     # 失败时为字符串错误信息（或缺失）；原 `response.get("content").get("result")`
@@ -383,7 +389,7 @@ def chat(title: str, content: str) -> None:
     print("chat 服务启动")
     data = "payload=" + json.dumps({"text": title + "\n" + content})
     url = push_config.get("CHAT_URL") + push_config.get("CHAT_TOKEN")
-    response = requests.post(url, data=data)
+    response = requests.post(url, data=data, timeout=15)
 
     if response.status_code == 200:
         print("Chat 推送成功！")
@@ -413,7 +419,7 @@ def pushplus_bot(title: str, content: str) -> None:
     }
     body = json.dumps(data).encode(encoding="utf-8")
     headers = {"Content-Type": "application/json"}
-    response = requests.post(url=url, data=body, headers=headers).json()
+    response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
 
     code = response["code"]
     if code == 200:
@@ -454,7 +460,7 @@ def weplus_bot(title: str, content: str) -> None:
     }
     body = json.dumps(data).encode(encoding="utf-8")
     headers = {"Content-Type": "application/json"}
-    response = requests.post(url=url, data=body, headers=headers).json()
+    response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
 
     if response["code"] == 200:
         print("微加机器人 推送成功！")
@@ -472,7 +478,7 @@ def qmsg_bot(title: str, content: str) -> None:
 
     url = f'https://qmsg.zendee.cn/{push_config.get("QMSG_TYPE")}/{push_config.get("QMSG_KEY")}'
     payload = {"msg": f'{title}\n\n{content.replace("----", "-")}'.encode("utf-8")}
-    response = requests.post(url=url, params=payload).json()
+    response = requests.post(url=url, params=payload, timeout=15).json()
 
     if response["code"] == 0:
         print("qmsg 推送成功！")
@@ -532,7 +538,7 @@ class WeCom:
             "corpid": self.CORPID,
             "corpsecret": self.CORPSECRET,
         }
-        req = requests.post(url, params=values)
+        req = requests.post(url, params=values, timeout=15)
         data = json.loads(req.text)
         return data["access_token"]
 
@@ -548,7 +554,7 @@ class WeCom:
             "safe": "0",
         }
         send_msges = bytes(json.dumps(send_values), "utf-8")
-        respone = requests.post(send_url, send_msges)
+        respone = requests.post(send_url, send_msges, timeout=15)
         respone = respone.json()
         return respone["errmsg"]
 
@@ -574,7 +580,7 @@ class WeCom:
             },
         }
         send_msges = bytes(json.dumps(send_values), "utf-8")
-        respone = requests.post(send_url, send_msges)
+        respone = requests.post(send_url, send_msges, timeout=15)
         respone = respone.json()
         return respone["errmsg"]
 
@@ -639,7 +645,7 @@ def telegram_bot(title: str, content: str) -> None:
         )
         proxies = {"http": proxyStr, "https": proxyStr}
     response = requests.post(
-        url=url, headers=headers, params=payload, proxies=proxies
+        url=url, headers=headers, params=payload, proxies=proxies, timeout=15
     ).json()
 
     if response["ok"]:
@@ -676,7 +682,7 @@ def aibotk(title: str, content: str) -> None:
         }
     body = json.dumps(data).encode(encoding="utf-8")
     headers = {"Content-Type": "application/json"}
-    response = requests.post(url=url, data=body, headers=headers).json()
+    response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
     print(response)
     if response["code"] == 0:
         print("智能微秘书 推送成功！")
@@ -758,7 +764,7 @@ def pushme(title: str, content: str) -> None:
         "date": push_config.get("date") if push_config.get("date") else "",
         "type": push_config.get("type") if push_config.get("type") else "",
     }
-    response = requests.post(url, data=data)
+    response = requests.post(url, data=data, timeout=15)
 
     if response.status_code == 200 and response.text == "success":
         print("PushMe 推送成功！")
@@ -801,7 +807,7 @@ def chronocat(title: str, content: str) -> None:
                     }
                 ],
             }
-            response = requests.post(url, headers=headers, data=json.dumps(data))
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=15)
             if response.status_code == 200:
                 if chat_type == 1:
                     print(f"QQ个人消息:{ids}推送成功！")
@@ -848,7 +854,7 @@ def ntfy(title: str, content: str) -> None:
         headers['Actions'] = encode_rfc2047(push_config.get("NTFY_ACTIONS"))
 
     url = push_config.get("NTFY_URL") + "/" + push_config.get("NTFY_TOPIC")
-    response = requests.post(url, data=data, headers=headers)
+    response = requests.post(url, data=data, headers=headers, timeout=15)
     if response.status_code == 200:  # 使用 response.status_code 进行检查
         print("Ntfy 推送成功！")
     else:
@@ -903,7 +909,7 @@ def wxpusher_bot(title: str, content: str) -> None:
     }
 
     headers = {"Content-Type": "application/json"}
-    response = requests.post(url=url, json=data, headers=headers).json()
+    response = requests.post(url=url, json=data, headers=headers, timeout=15).json()
 
     if response.get("code") == 1000:
         print("wxpusher 推送成功！")
