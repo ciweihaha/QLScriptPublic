@@ -1099,6 +1099,16 @@ def add_notify_function():
 SEND_JOIN_TIMEOUT = 60  # 秒，send() 等全部通道的最长墙钟时间
 
 
+# 深查第 9 轮：与 notify.py 双生文件同改——通道异常收敛到 send() 的
+# 唯一线程入口（详见 notify.py 的注释）：单通道异常只记一行，不杀死
+# 其余通道线程、不影响 send() 返回；线程名仍用通道函数名。
+def _run_channel(mode, title, content):
+    try:
+        mode(title, content)
+    except Exception as e:
+        print(f"{mode.__name__} 推送异常：{e}，该通道跳过，继续执行其余通道！")
+
+
 def send(title: str, content: str, ignore_default_config: bool = False, **kwargs):
     if kwargs:
         global push_config
@@ -1124,7 +1134,10 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
     notify_function = add_notify_function()
     ts = [
         threading.Thread(
-            target=mode, args=(title, content), name=mode.__name__, daemon=True
+            target=_run_channel,
+            args=(mode, title, content),
+            name=mode.__name__,
+            daemon=True,
         )
         for mode in notify_function
     ]

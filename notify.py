@@ -1117,6 +1117,21 @@ def add_notify_function():
 SEND_JOIN_TIMEOUT = 60  # 秒，send() 等全部通道的最长墙钟时间
 
 
+# 深查第 9 轮：通道异常收敛到 send() 的唯一线程入口（双生文件同改）。
+# 各通道仍可能抛错：第 7 轮补 timeout 后超时以 requests 超时异常抛出、
+# 上游回 HTML 错误页时 .json() 抛 ValueError、wxpusher 的 int(topic_id)
+# 遇非数字抛 ValueError——原先直接以 target=mode 起线程，异常只剩
+# threading 往 stderr 打的 traceback，没有"某通道推送失败"这一行，
+# 且与第 5 轮的超时点名格式不一致。改为统一包一层：单通道异常只记一行、
+# 不杀死其余通道线程、不影响 send() 返回；线程名仍用通道函数名，
+# 第 5 轮的"仍未完成通道"点名不受影响。
+def _run_channel(mode, title, content):
+    try:
+        mode(title, content)
+    except Exception as e:
+        print(f"{mode.__name__} 推送异常：{e}，该通道跳过，继续执行其余通道！")
+
+
 def send(title: str, content: str, ignore_default_config: bool = False, **kwargs):
     if kwargs:
         global push_config
@@ -1142,7 +1157,10 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
     notify_function = add_notify_function()
     ts = [
         threading.Thread(
-            target=mode, args=(title, content), name=mode.__name__, daemon=True
+            target=_run_channel,
+            args=(mode, title, content),
+            name=mode.__name__,
+            daemon=True,
         )
         for mode in notify_function
     ]
