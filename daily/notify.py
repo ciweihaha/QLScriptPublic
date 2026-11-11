@@ -1043,7 +1043,10 @@ def add_notify_function():
     notify_function = []
     if push_config.get("BARK_PUSH"):
         notify_function.append(bark)
-    if push_config.get("CONSOLE"):
+    # 深查第 14 轮：与 notify.py 双生文件同改——CONSOLE="false" 不再
+    # 启用控制台输出，沿用 HITOKOTO 的 `!= "false"` 约定
+    # （详见 notify.py 的注释）。
+    if push_config.get("CONSOLE") and push_config.get("CONSOLE") != "false":
         notify_function.append(console)
     if push_config.get("DD_BOT_TOKEN") and push_config.get("DD_BOT_SECRET"):
         notify_function.append(dingding_bot)

@@ -1060,7 +1060,12 @@ def add_notify_function():
     notify_function = []
     if push_config.get("BARK_PUSH"):
         notify_function.append(bark)
-    if push_config.get("CONSOLE"):
+    # 深查第 14 轮：CONSOLE="false" 仍启用控制台输出（双生文件同改）。
+    # 环境变量进来的都是字符串，"false" 非空即真值，原先直接判真值，
+    # 用户写 CONSOLE=false 想关掉反而一直开着。同文件 HITOKOTO 已用
+    # `!= "false"` 判定，CONSOLE 沿用同一约定（True/"true" 启用，
+    # False/"false" 关闭），不改其他通道判定。
+    if push_config.get("CONSOLE") and push_config.get("CONSOLE") != "false":
         notify_function.append(console)
     if push_config.get("DD_BOT_TOKEN") and push_config.get("DD_BOT_SECRET"):
         notify_function.append(dingding_bot)
