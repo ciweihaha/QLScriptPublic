@@ -816,6 +816,13 @@ def chronocat(title: str, content: str) -> None:
 
     user_ids = re.findall(r"user_id=(\d+)", push_config.get("CHRONOCAT_QQ"))
     group_ids = re.findall(r"group_id=(\d+)", push_config.get("CHRONOCAT_QQ"))
+    # 深查第 15 轮：CHRONOCAT_QQ 解析不到任何收件人时静默零发送（双生文件
+    # 同改）。注释只写"qq号"，用户填裸 QQ 号（如 123456）时两个 findall
+    # 都为空，循环一次不跑、无成功无失败、连一行日志都没有，误以为已推送。
+    # 解析为空时直接点名格式并返回，不发请求。
+    if not user_ids and not group_ids:
+        print("CHRONOCAT_QQ 未解析到 user_id/group_id，请检查格式（例：user_id=123 group_id=456）！")
+        return
 
     url = f'{push_config.get("CHRONOCAT_URL")}/api/message/send'
     headers = {

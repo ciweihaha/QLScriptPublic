@@ -800,6 +800,12 @@ def chronocat(title: str, content: str) -> None:
 
     user_ids = re.findall(r"user_id=(\d+)", push_config.get("CHRONOCAT_QQ"))
     group_ids = re.findall(r"group_id=(\d+)", push_config.get("CHRONOCAT_QQ"))
+    # 深查第 15 轮：与 notify.py 双生文件同改——CHRONOCAT_QQ 解析不到
+    # 任何收件人时直接点名格式并返回，不再静默零发送
+    # （详见 notify.py 的注释）。
+    if not user_ids and not group_ids:
+        print("CHRONOCAT_QQ 未解析到 user_id/group_id，请检查格式（例：user_id=123 group_id=456）！")
+        return
 
     url = f'{push_config.get("CHRONOCAT_URL")}/api/message/send'
     headers = {
