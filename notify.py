@@ -183,7 +183,7 @@ def bark(title: str, content: str) -> None:
         url=url, data=json.dumps(data), headers=headers, timeout=15
     ).json()
 
-    if response["code"] == 200:
+    if response.get("code") == 200:
         print("bark 推送成功！")
     else:
         print("bark 推送失败！")
@@ -219,7 +219,7 @@ def dingding_bot(title: str, content: str) -> None:
         url=url, data=json.dumps(data), headers=headers, timeout=15
     ).json()
 
-    if not response["errcode"]:
+    if response.get("errcode") == 0:
         print("钉钉机器人 推送成功！")
     else:
         print("钉钉机器人 推送失败！")
@@ -277,7 +277,7 @@ def go_cqhttp(title: str, content: str) -> None:
     # 只加 timeout，不改 URL 与鉴权形态（go-cqhttp 的 access_token 查询参数语义未验证，不擅自改 header）。
     response = requests.get(url, timeout=15).json()
 
-    if response["status"] == "ok":
+    if response.get("status") == "ok":
         print("go-cqhttp 推送成功！")
     else:
         print("go-cqhttp 推送失败！")
@@ -318,10 +318,10 @@ def iGot(title: str, content: str) -> None:
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     response = requests.post(url, data=data, headers=headers, timeout=15).json()
 
-    if response["ret"] == 0:
+    if response.get("ret") == 0:
         print("iGot 推送成功！")
     else:
-        print(f'iGot 推送失败！{response["errMsg"]}')
+        print(f'iGot 推送失败！{response.get("errMsg")}')
 
 
 def serverJ(title: str, content: str) -> None:
@@ -343,10 +343,17 @@ def serverJ(title: str, content: str) -> None:
 
     response = requests.post(url, data=data, timeout=15).json()
 
+    # 深查第 8 轮：失败分支直接索引改 .get()（双生文件同改；本处是第 7 轮
+    # mock 验证时真实触发的点：上游回包缺 "message" 时原 response["message"]
+    # 抛 KeyError，"推送失败" 永远打不出来，通道线程直接崩掉。同类还有
+    # iGot errMsg、qmsg reason、aibotk error、pushplus data/msg 与各通道
+    # 成功判定的 code/errcode/status/ret/ok、WeCom 的 access_token/errmsg，
+    # 共 19 处——只认显式成功值，缺字段一律走失败分支，不抛错。
+    # one() 的 res["hitokoto"] 在第 4 轮 try/except 内，不动。
     if response.get("errno") == 0 or response.get("code") == 0:
         print("serverJ 推送成功！")
     else:
-        print(f'serverJ 推送失败！错误码：{response["message"]}')
+        print(f'serverJ 推送失败！错误码：{response.get("message")}')
 
 
 def pushdeer(title: str, content: str) -> None:
@@ -421,14 +428,14 @@ def pushplus_bot(title: str, content: str) -> None:
     headers = {"Content-Type": "application/json"}
     response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
 
-    code = response["code"]
+    code = response.get("code")
     if code == 200:
-        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + response["data"])
+        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + (response.get("data") or ""))
         print(
             "注意：请求成功并不代表推送成功，如未收到消息，请到pushplus官网使用流水号查询推送最终结果"
         )
     elif code == 900 or code == 903 or code == 905 or code == 999:
-        print(response["msg"])
+        print(response.get("msg"))
 
     else:
         # 2026-11-05 第 2 轮：删掉明文 HTTP 非官方域名回退。原逻辑在主通道异常时
@@ -462,7 +469,7 @@ def weplus_bot(title: str, content: str) -> None:
     headers = {"Content-Type": "application/json"}
     response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
 
-    if response["code"] == 200:
+    if response.get("code") == 200:
         print("微加机器人 推送成功！")
     else:
         print("微加机器人 推送失败！")
@@ -480,10 +487,10 @@ def qmsg_bot(title: str, content: str) -> None:
     payload = {"msg": f'{title}\n\n{content.replace("----", "-")}'.encode("utf-8")}
     response = requests.post(url=url, params=payload, timeout=15).json()
 
-    if response["code"] == 0:
+    if response.get("code") == 0:
         print("qmsg 推送成功！")
     else:
-        print(f'qmsg 推送失败！{response["reason"]}')
+        print(f'qmsg 推送失败！{response.get("reason")}')
 
 
 def wecom_app(title: str, content: str) -> None:
@@ -540,7 +547,7 @@ class WeCom:
         }
         req = requests.post(url, params=values, timeout=15)
         data = json.loads(req.text)
-        return data["access_token"]
+        return data.get("access_token")
 
     def send_text(self, message, touser="@all"):
         send_url = (
@@ -556,7 +563,7 @@ class WeCom:
         send_msges = bytes(json.dumps(send_values), "utf-8")
         respone = requests.post(send_url, send_msges, timeout=15)
         respone = respone.json()
-        return respone["errmsg"]
+        return respone.get("errmsg")
 
     def send_mpnews(self, title, message, media_id, touser="@all"):
         send_url = (
@@ -582,7 +589,7 @@ class WeCom:
         send_msges = bytes(json.dumps(send_values), "utf-8")
         respone = requests.post(send_url, send_msges, timeout=15)
         respone = respone.json()
-        return respone["errmsg"]
+        return respone.get("errmsg")
 
 
 def wecom_bot(title: str, content: str) -> None:
@@ -604,7 +611,7 @@ def wecom_bot(title: str, content: str) -> None:
         url=url, data=json.dumps(data), headers=headers, timeout=15
     ).json()
 
-    if response["errcode"] == 0:
+    if response.get("errcode") == 0:
         print("企业微信机器人推送成功！")
     else:
         print("企业微信机器人推送失败！")
@@ -648,7 +655,7 @@ def telegram_bot(title: str, content: str) -> None:
         url=url, headers=headers, params=payload, proxies=proxies, timeout=15
     ).json()
 
-    if response["ok"]:
+    if response.get("ok"):
         print("tg 推送成功！")
     else:
         print("tg 推送失败！")
@@ -684,10 +691,10 @@ def aibotk(title: str, content: str) -> None:
     headers = {"Content-Type": "application/json"}
     response = requests.post(url=url, data=body, headers=headers, timeout=15).json()
     print(response)
-    if response["code"] == 0:
+    if response.get("code") == 0:
         print("智能微秘书 推送成功！")
     else:
-        print(f'智能微秘书 推送失败！{response["error"]}')
+        print(f'智能微秘书 推送失败！{response.get("error")}')
 
 
 def smtp(title: str, content: str) -> None:
