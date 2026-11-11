@@ -389,7 +389,12 @@ def chat(title: str, content: str) -> None:
     if not push_config.get("CHAT_URL") or not push_config.get("CHAT_TOKEN"):
         return
     print("chat 服务启动")
-    data = "payload=" + json.dumps({"text": title + "\n" + content})
+    # 深查第 11 轮：与 notify.py 双生文件同改——payload 值做 URL 编码，
+    # 内容含 & 时原先表单解析截断、服务端收到残缺 JSON；只编码 payload
+    # 值，字段名与 URL/TOKEN 拼接形态不动（详见 notify.py 的注释）。
+    data = "payload=" + urllib.parse.quote_plus(
+        json.dumps({"text": title + "\n" + content})
+    )
     url = push_config.get("CHAT_URL") + push_config.get("CHAT_TOKEN")
     response = requests.post(url, data=data, timeout=15)
 

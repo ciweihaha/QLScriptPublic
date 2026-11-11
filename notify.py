@@ -401,7 +401,14 @@ def chat(title: str, content: str) -> None:
     if not push_config.get("CHAT_URL") or not push_config.get("CHAT_TOKEN"):
         return
     print("chat 服务启动")
-    data = "payload=" + json.dumps({"text": title + "\n" + content})
+    # 深查第 11 轮：payload 值做 URL 编码（双生文件同改；同类问题见第 10 轮
+    # go_cqhttp）。原先 JSON 直接拼在表单体里：内容含 & 时服务端按表单
+    # 解析，payload 在第一个 & 处截断（实测只剩残缺 JSON，Synology Chat
+    # 侧解析失败整条丢掉）。只编码 payload 这一个值（quote_plus），
+    # 字段名、CHAT_URL/TOKEN 拼接形态与 JSON 结构不动。
+    data = "payload=" + urllib.parse.quote_plus(
+        json.dumps({"text": title + "\n" + content})
+    )
     url = push_config.get("CHAT_URL") + push_config.get("CHAT_TOKEN")
     response = requests.post(url, data=data, timeout=15)
 
