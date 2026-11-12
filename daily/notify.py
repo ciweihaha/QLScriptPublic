@@ -852,6 +852,11 @@ def ntfy(title: str, content: str) -> None:
 
     if not push_config.get("NTFY_TOPIC"):
         return
+    # 深查第 17 轮：与 notify.py 双生文件同改——缺 NTFY_URL 时明示返回，
+    # 不再拼出无 scheme 地址抛 MissingSchema（详见 notify.py 的注释）。
+    if not push_config.get("NTFY_URL"):
+        print("ntfy 服务的 NTFY_URL 未设置!!")
+        return
     print("ntfy 服务启动")
     priority = "3"
     if not push_config.get("NTFY_PRIORITY"):
@@ -896,11 +901,16 @@ def wxpusher_bot(title: str, content: str) -> None:
     # 处理topic_ids和uids，将分号分隔的字符串转为数组
     topic_ids = []
     if push_config.get("WXPUSHER_TOPIC_IDS"):
-        topic_ids = [
-            int(id.strip())
-            for id in push_config.get("WXPUSHER_TOPIC_IDS").split(";")
-            if id.strip()
-        ]
+        # 深查第 17 轮：与 notify.py 双生文件同改——非数字分段只跳过该段，
+        # 不再抛 ValueError 拖垮整通道（详见 notify.py 的注释）。
+        for _seg in push_config.get("WXPUSHER_TOPIC_IDS").split(";"):
+            _seg = _seg.strip()
+            if not _seg:
+                continue
+            try:
+                topic_ids.append(int(_seg))
+            except ValueError:
+                print(f"wxpusher 的 WXPUSHER_TOPIC_IDS 含非数字分段 '{_seg}'，已跳过该分段！")
 
     uids = []
     if push_config.get("WXPUSHER_UIDS"):
