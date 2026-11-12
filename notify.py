@@ -975,7 +975,12 @@ def parse_headers(headers):
 def parse_string(input_string, value_format_fn=None):
     matches = {}
     pattern = r"(\w+):\s*((?:(?!\n\w+:).)*)"
-    regex = re.compile(pattern)
+    # 深查第 16 轮：补 re.DOTALL（双生文件同改）。值模板里的 (?!\n\w+:) 本意是
+    # “换行后不是下一个 key: 才继续吃”，但没 DOTALL 时 . 匹配不到 \n，
+    # 展望恒为摆设，多行值在第一个换行处截断（如 content 写两行只剩首行）。
+    # 补 DOTALL 后展望生效，多行值完整保留、到下一个 key: 才停；单行与
+    # JSON 值行为不变（group(2) 仍 strip，json.loads 仍先试）。
+    regex = re.compile(pattern, re.DOTALL)
     for match in regex.finditer(input_string):
         key, value = match.group(1).strip(), match.group(2).strip()
         try:
@@ -1019,11 +1024,26 @@ def custom_notify(title: str, content: str) -> None:
     WEBHOOK_BODY = push_config.get("WEBHOOK_BODY")
     WEBHOOK_HEADERS = push_config.get("WEBHOOK_HEADERS")
 
-    if "$title" not in WEBHOOK_URL and "$title" not in WEBHOOK_BODY:
+    # 深查第 16 轮：请求头占位符（双生文件同改）。门禁文案写“请求头或者请求体
+    # 中必须包含 $title”，但只查 URL/BODY 两处：$title 只放请求头时被误拦；
+    # 且 parse_headers 出来的值从不替换，$title/$content 原样发出，
+    # 上游收到字面量。门禁补查 WEBHOOK_HEADERS，头值按与 body 相同的
+    # 转义（\n→\\n，头值禁裸换行）做替换；URL/BODY 逻辑不动。
+    if (
+        "$title" not in WEBHOOK_URL
+        and "$title" not in WEBHOOK_BODY
+        and "$title" not in (WEBHOOK_HEADERS or "")
+    ):
         print("请求头或者请求体中必须包含 $title 和 $content")
         return
 
     headers = parse_headers(WEBHOOK_HEADERS)
+    headers = {
+        k: v.replace("$title", title.replace("\n", "\\n")).replace(
+            "$content", content.replace("\n", "\\n")
+        )
+        for k, v in headers.items()
+    }
     body = parse_body(
         WEBHOOK_BODY,
         WEBHOOK_CONTENT_TYPE,
