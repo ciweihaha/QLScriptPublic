@@ -853,16 +853,19 @@ def chronocat(title: str, content: str) -> None:
                 ],
             }
             response = requests.post(url, headers=headers, data=json.dumps(data), timeout=15)
+            # 深查第 20 轮：逐条日志只点名当条 chat_id（双生文件同改）。原先印的
+            # 是整张 ids 表：配 2 个收件人时打出两行一模一样、都带 ['111', '222']
+            # 的“成功”，分不清哪条真发了、哪条失败；改为当条 chat_id。
             if response.status_code == 200:
                 if chat_type == 1:
-                    print(f"QQ个人消息:{ids}推送成功！")
+                    print(f"QQ个人消息:{chat_id}推送成功！")
                 else:
-                    print(f"QQ群消息:{ids}推送成功！")
+                    print(f"QQ群消息:{chat_id}推送成功！")
             else:
                 if chat_type == 1:
-                    print(f"QQ个人消息:{ids}推送失败！")
+                    print(f"QQ个人消息:{chat_id}推送失败！")
                 else:
-                    print(f"QQ群消息:{ids}推送失败！")
+                    print(f"QQ群消息:{chat_id}推送失败！")
 
 
 def ntfy(title: str, content: str) -> None:
@@ -1116,7 +1119,11 @@ def add_notify_function():
     # 用户写 CONSOLE=false 想关掉反而一直开着。同文件 HITOKOTO 已用
     # `!= "false"` 判定，CONSOLE 沿用同一约定（True/"true" 启用，
     # False/"false" 关闭），不改其他通道判定。
-    if push_config.get("CONSOLE") and push_config.get("CONSOLE") != "false":
+    # 深查第 20 轮：CONSOLE="False" 仍启用（双生文件同改）。第 14 轮只修了
+    # 小写 "false"：字符串 "False"/"FALSE" 是真值且 != "false"，注释里写的
+    # “False/\"false\" 关闭”对它们不成立。改大小写不敏感比较，与第 18/19
+    # 轮 SMTP_SSL/HITOKOTO 同一做法；布尔 False 靠前半真值判定已关闭。
+    if push_config.get("CONSOLE") and str(push_config.get("CONSOLE")).lower() != "false":
         notify_function.append(console)
     if push_config.get("DD_BOT_TOKEN") and push_config.get("DD_BOT_SECRET"):
         notify_function.append(dingding_bot)
