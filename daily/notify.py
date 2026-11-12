@@ -1180,7 +1180,10 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
     # 根据标题跳过一些消息推送，环境变量：SKIP_PUSH_TITLE 用回车分隔
     skipTitle = os.getenv("SKIP_PUSH_TITLE")
     if skipTitle:
-        if title in re.split("\n", skipTitle):
+        # 深查第 21 轮：与 notify.py 双生文件同改——按 \r?\n 分隔并 strip
+        # 条目，Windows 粘贴的 \r\n 与条目首尾空格不再让跳过失效
+        # （详见 notify.py 的注释）。
+        if title in [t.strip() for t in re.split(r"\r?\n", skipTitle) if t.strip()]:
             print(f"{title} 在SKIP_PUSH_TITLE环境变量内，跳过推送！")
             return
 
