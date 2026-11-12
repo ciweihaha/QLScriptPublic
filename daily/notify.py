@@ -958,7 +958,9 @@ def parse_headers(headers):
 def parse_string(input_string, value_format_fn=None):
     matches = {}
     pattern = r"(\w+):\s*((?:(?!\n\w+:).)*)"
-    regex = re.compile(pattern)
+    # 深查第 16 轮：与 notify.py 双生文件同改——补 re.DOTALL，多行值不再
+    # 在首个换行处截断（详见 notify.py 的注释）。
+    regex = re.compile(pattern, re.DOTALL)
     for match in regex.finditer(input_string):
         key, value = match.group(1).strip(), match.group(2).strip()
         try:
@@ -1002,11 +1004,23 @@ def custom_notify(title: str, content: str) -> None:
     WEBHOOK_BODY = push_config.get("WEBHOOK_BODY")
     WEBHOOK_HEADERS = push_config.get("WEBHOOK_HEADERS")
 
-    if "$title" not in WEBHOOK_URL and "$title" not in WEBHOOK_BODY:
+    # 深查第 16 轮：与 notify.py 双生文件同改——门禁补查请求头，头值也
+    # 替换 $title/$content（详见 notify.py 的注释）。
+    if (
+        "$title" not in WEBHOOK_URL
+        and "$title" not in WEBHOOK_BODY
+        and "$title" not in (WEBHOOK_HEADERS or "")
+    ):
         print("请求头或者请求体中必须包含 $title 和 $content")
         return
 
     headers = parse_headers(WEBHOOK_HEADERS)
+    headers = {
+        k: v.replace("$title", title.replace("\n", "\\n")).replace(
+            "$content", content.replace("\n", "\\n")
+        )
+        for k, v in headers.items()
+    }
     body = parse_body(
         WEBHOOK_BODY,
         WEBHOOK_CONTENT_TYPE,
