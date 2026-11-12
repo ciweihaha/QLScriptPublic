@@ -831,16 +831,18 @@ def chronocat(title: str, content: str) -> None:
                 ],
             }
             response = requests.post(url, headers=headers, data=json.dumps(data), timeout=15)
+            # 深查第 20 轮：与 notify.py 双生文件同改——逐条日志只点名当条
+            # chat_id，不再印整张收件人表（详见 notify.py 的注释）。
             if response.status_code == 200:
                 if chat_type == 1:
-                    print(f"QQ个人消息:{ids}推送成功！")
+                    print(f"QQ个人消息:{chat_id}推送成功！")
                 else:
-                    print(f"QQ群消息:{ids}推送成功！")
+                    print(f"QQ群消息:{chat_id}推送成功！")
             else:
                 if chat_type == 1:
-                    print(f"QQ个人消息:{ids}推送失败！")
+                    print(f"QQ个人消息:{chat_id}推送失败！")
                 else:
-                    print(f"QQ群消息:{ids}推送失败！")
+                    print(f"QQ群消息:{chat_id}推送失败！")
 
 
 def ntfy(title: str, content: str) -> None:
@@ -1080,7 +1082,9 @@ def add_notify_function():
     # 深查第 14 轮：与 notify.py 双生文件同改——CONSOLE="false" 不再
     # 启用控制台输出，沿用 HITOKOTO 的 `!= "false"` 约定
     # （详见 notify.py 的注释）。
-    if push_config.get("CONSOLE") and push_config.get("CONSOLE") != "false":
+    # 深查第 20 轮：与 notify.py 双生文件同改——CONSOLE="False"/"FALSE"
+    # 也关闭（大小写不敏感比较，详见 notify.py 的注释）。
+    if push_config.get("CONSOLE") and str(push_config.get("CONSOLE")).lower() != "false":
         notify_function.append(console)
     if push_config.get("DD_BOT_TOKEN") and push_config.get("DD_BOT_SECRET"):
         notify_function.append(dingding_bot)
