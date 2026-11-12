@@ -290,7 +290,11 @@ class ALiYun:
         if not res.get('success'):
             return f"[{self.name}] ❌ 签到失败: {res.get('message')}"
 
-        count = res.get('result', {}).get('signInCount', 0)
+        # 深查第 22 轮：result 为 null 时不再抛错（第 8 轮 .get() 同类）。
+        # `res.get('result', {})` 只兜底“缺 key”，上游回 success=true 但
+        # result=null 时 `.get` 在 None 上抛 AttributeError，run() 崩掉、
+        # 主流程把一次成功签到记成“运行发生异常”。`(or {})` 两种空形态都兜住。
+        count = (res.get('result') or {}).get('signInCount', 0)
         reward_info = self.get_reward(count)
         cap_info = self.get_capacity()
 
