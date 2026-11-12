@@ -83,7 +83,7 @@ class Task {
         } = await axios.request(options);
         if (result?.status == '200') {
             this.token = result.data
-            $.log(`🌸账号[${this.index}] 获取用户Token成功:${this.token}`)
+            $.log(`🌸账号[${this.index}] 获取用户Token成功`)
         } else {
             $.log(`🌸账号[${this.index}] 获取用户Token-失败:${result.msg}❌`)
         }
