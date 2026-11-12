@@ -155,7 +155,6 @@ class Task {
             const arr = Array.isArray(sc) ? sc : [sc];
             setCookieStr = arr.map((c) => String(c).split(";")[0]).join("; ");
         }
-        console.log(setCookieStr)
         // 使用示例
         const accessToken = get_accessToken(setCookieStr);
         const uid = get_pdd_user_id(setCookieStr);
