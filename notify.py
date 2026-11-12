@@ -754,9 +754,14 @@ def smtp(title: str, content: str) -> None:
         # 通道线程永不返回。这是第 5 轮登记的第 19 个挂起点（18 处 requests
         # 调用 + SMTP）。只加 timeout=15（仓内通道惯用值），不改主机名、端口
         # 与 SSL 选择语义（"host:port" 写法由 smtplib.connect 自行拆分）。
+        # 深查第 18 轮：SMTP_SSL 大小写/布尔形态（双生文件同改）。原先
+        # `== "true"` 精确匹配：用户写 "True"/"TRUE"、或经 kwargs 传布尔
+        # True 时都被判为明文，明文连 465 这类 SSL 端口握手即失败，报错却
+        # 只说“推送失败”，根因难定位。改为大小写不敏感比较（str() 包一层
+        # 兼顾布尔 True）；"false"/"False"/其他值仍走明文，默认行为不变。
         smtp_server = (
             smtplib.SMTP_SSL(push_config.get("SMTP_SERVER"), timeout=15)
-            if push_config.get("SMTP_SSL") == "true"
+            if str(push_config.get("SMTP_SSL")).lower() == "true"
             else smtplib.SMTP(push_config.get("SMTP_SERVER"), timeout=15)
         )
         smtp_server.login(
