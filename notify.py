@@ -869,6 +869,13 @@ def ntfy(title: str, content: str) -> None:
 
     if not push_config.get("NTFY_TOPIC"):
         return
+    # 深查第 17 轮：缺 URL 时明示返回（双生文件同改）。原先只判 TOPIC，
+    # URL 为空时拼出 "/topic" 无 scheme 地址，requests 抛 MissingSchema，
+    # 每次发送都在 _run_channel 里记一条异常；有 TOPIC 无 URL 的配置本就
+    # 发不出去，改为入口点名、不发请求。
+    if not push_config.get("NTFY_URL"):
+        print("ntfy 服务的 NTFY_URL 未设置!!")
+        return
     print("ntfy 服务启动")
     priority = "3"
     if not push_config.get("NTFY_PRIORITY"):
@@ -913,11 +920,19 @@ def wxpusher_bot(title: str, content: str) -> None:
     # 处理topic_ids和uids，将分号分隔的字符串转为数组
     topic_ids = []
     if push_config.get("WXPUSHER_TOPIC_IDS"):
-        topic_ids = [
-            int(id.strip())
-            for id in push_config.get("WXPUSHER_TOPIC_IDS").split(";")
-            if id.strip()
-        ]
+        # 深查第 17 轮：单个非数字分段不再拖垮整通道（双生文件同改）。原先
+        # 列表推导里 int() 遇非数字直接抛 ValueError，_run_channel 接住后
+        # 整条 wxpusher 通道跳过——一个手误分段让全部 topic 与 uid 都收不到。
+        # 改为逐段解析：数字进数组，非数字只点名该分段并跳过；全是非数字时
+        # topic_ids 为空，走下文“至少设置一个”的既有分支。
+        for _seg in push_config.get("WXPUSHER_TOPIC_IDS").split(";"):
+            _seg = _seg.strip()
+            if not _seg:
+                continue
+            try:
+                topic_ids.append(int(_seg))
+            except ValueError:
+                print(f"wxpusher 的 WXPUSHER_TOPIC_IDS 含非数字分段 '{_seg}'，已跳过该分段！")
 
     uids = []
     if push_config.get("WXPUSHER_UIDS"):
