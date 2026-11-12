@@ -444,7 +444,11 @@ def pushplus_bot(title: str, content: str) -> None:
 
     code = response.get("code")
     if code == 200:
-        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + (response.get("data") or ""))
+        # 深查第 19 轮：成功分支 data 非字符串抛 TypeError（双生文件同改）。
+        # 流水号 data 通常是字符串，但上游回数字时 `"..." + data` 直接抛
+        # TypeError——推送明明成功了，成功分支自己崩掉（_run_channel 接住后
+        # 只剩一行“推送异常”，用户还以为没推成功）。str() 包一层再拼接。
+        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + str(response.get("data") or ""))
         print(
             "注意：请求成功并不代表推送成功，如未收到消息，请到pushplus官网使用流水号查询推送最终结果"
         )
@@ -1225,8 +1229,13 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
             print(f"{title} 在SKIP_PUSH_TITLE环境变量内，跳过推送！")
             return
 
+    # 深查第 19 轮：HITOKOTO 布尔 False 仍调一言（双生文件同改）。与第 14 轮
+    # CONSOLE、第 18 轮 SMTP_SSL 同类：字符串布尔判定。`!= "false"` 只认
+    # 小写字符串，经 kwargs 传布尔 False 时仍为真值，one() 照调不误——
+    # 用户明明关了一言，send() 每次仍多一次上游请求（失败只记日志不致命，
+    # 但违背配置）。改大小写不敏感比较，str() 包一层兼顾布尔。
     hitokoto = push_config.get("HITOKOTO")
-    content += "\n\n" + one() if hitokoto != "false" else ""
+    content += "\n\n" + one() if str(hitokoto).lower() != "false" else ""
 
     notify_function = add_notify_function()
     ts = [
