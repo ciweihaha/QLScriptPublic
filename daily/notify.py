@@ -430,7 +430,9 @@ def pushplus_bot(title: str, content: str) -> None:
 
     code = response.get("code")
     if code == 200:
-        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + (response.get("data") or ""))
+        # 深查第 19 轮：与 notify.py 双生文件同改——流水号 data 先 str()
+        # 再拼接，上游回数字时成功分支不再抛 TypeError（详见 notify.py 的注释）。
+        print("PUSHPLUS 推送请求成功，可根据流水号查询推送结果:" + str(response.get("data") or ""))
         print(
             "注意：请求成功并不代表推送成功，如未收到消息，请到pushplus官网使用流水号查询推送最终结果"
         )
@@ -1178,8 +1180,10 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
             print(f"{title} 在SKIP_PUSH_TITLE环境变量内，跳过推送！")
             return
 
+    # 深查第 19 轮：与 notify.py 双生文件同改——HITOKOTO 布尔 False 也
+    # 跳过一言（大小写不敏感比较，详见 notify.py 的注释）。
     hitokoto = push_config.get("HITOKOTO")
-    content += "\n\n" + one() if hitokoto != "false" else ""
+    content += "\n\n" + one() if str(hitokoto).lower() != "false" else ""
 
     notify_function = add_notify_function()
     ts = [
