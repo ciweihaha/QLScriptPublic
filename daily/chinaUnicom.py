@@ -4194,7 +4194,9 @@ class UserService:
         return imei_raw + str(check_digit)
 
     def aiting_woread_login(self, phone):
-        access_token = "ODZERTZCMjA1NTg1MTFFNDNFMThDRDYw"
+        # 沃阅读登录 accesstoken：原为硬编码的抓包 token，已改为环境变量读取；
+        # 未设置时不带该请求头（如服务端拒绝，请设置 WOREAD_ACCESS_TOKEN）。
+        access_token = os.getenv("WOREAD_ACCESS_TOKEN", "")
         token_enc = ""
         if self.token_online:
              token_enc = self.aiting_get_aes(self.token_online, WOREAD_KEY)
@@ -4218,10 +4220,13 @@ class UserService:
         body = {"sign": sign_result}
         headers = {
             "User-Agent": "Mozilla/5.0 (Linux; Android 11; Redmi Note 10 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/92.0.4515.159 Mobile Safari/537.36",
-            "accesstoken": access_token,
             "Content-Type": "application/json;charset=UTF-8",
             "Origin": "https://10010.woread.com.cn"
         }
+        if access_token:
+            headers["accesstoken"] = access_token
+        else:
+            self.log("沃阅读登录: 未设置 WOREAD_ACCESS_TOKEN，将不带 accesstoken 请求头")
         res = self.session.post(url, json=body, headers=headers).json()
         if res.get("code") == "0000":
             return res.get("data", {}).get("token")

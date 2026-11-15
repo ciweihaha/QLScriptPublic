@@ -43,16 +43,18 @@ def login_to_51daili():
         
         if token_input:
             login_token = token_input.get('value')
-            print(f"成功获取登录令牌: {login_token}")
+            print("成功获取登录令牌")
         else:
-            print("未找到登录令牌，使用默认令牌")
-            login_token = "14f2877f31842495ff24e3d73036158a"
-        
+            # 不再使用硬编码的默认令牌（已泄露的抓包值，且已过期不可用），直接失败
+            print("错误: 未找到登录令牌，无法继续登录")
+            return None
+
         if phpsessid:
-            print(f"成功获取PHPSESSID: {phpsessid}")
+            print("成功获取PHPSESSID")
         else:
-            print("未能从响应头中获取PHPSESSID，使用默认值")
-            phpsessid = "qkheban0ocfthart1bk7s861kn"
+            # 不再使用硬编码的默认 PHPSESSID（已泄露的抓包值），直接失败
+            print("错误: 未能从响应头中获取PHPSESSID，无法继续登录")
+            return None
         
         # 准备登录数据和更新headers
         login_data = {
@@ -79,16 +81,14 @@ def login_to_51daili():
         if login_response.status_code == 200:
             print("登录请求已发送，状态码: 200")
             
-            # 尝试从响应头中查找token
-            print("响应头:", login_response.headers)
-            
+            # 尝试从响应头中查找token（不再打印完整响应头，避免泄露 Set-Cookie）
             token = None
             # 检查Set-Cookie头
             if 'set-cookie' in login_response.headers:
                 cookies = login_response.headers['set-cookie'].split(';')
                 for cookie in cookies:
                     if 'token' in cookie.lower():
-                        print(f"找到token cookie: {cookie}")
+                        print("找到token cookie")
                         # 提取token值
                         token_parts = cookie.split('=')
                         if len(token_parts) >= 2:
@@ -99,12 +99,12 @@ def login_to_51daili():
             if not token:
                 for key, value in login_response.headers.items():
                     if 'token' in key.lower():
-                        print(f"找到token头: {key}: {value}")
+                        print(f"找到token头: {key}")
                         token = value
                         break
             
             if token:
-                print(f"成功获取token: {token}")
+                print("成功获取token")
                 
                 # 使用token请求签到页面
                 signin_headers = headers.copy()
